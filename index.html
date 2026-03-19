@@ -415,7 +415,10 @@ function nav(v,m){
   else if(v==='compare'){tt.textContent='Comparar clínicas';ts.textContent='Elige dos y ve cuál es más rentable';cnt.innerHTML=rCompare();}
   else if(v==='contacted'){tt.textContent='Contactadas';ts.textContent='Seguimiento CRM';cnt.innerHTML=rContacted();}
   else if(v==='pipeline'){tt.textContent='Pipeline';ts.textContent='Embudo comercial';cnt.innerHTML=rPipeline();}
-  else if(v==='detail'){tt.textContent=m.n;ts.textContent=m.c+' · '+m.p;tr.innerHTML='<button class="btn" id="btn-back">← Volver</button>';cnt.innerHTML=rDetail(m);window.scrollTo(0,0);}
+  else if(v==='detail'){tt.textContent=m.n;ts.textContent=m.c+' · '+m.p;var didx=D.indexOf(m);
+    var prevH=didx>0?'<button class="btn" data-nav-dir="1" data-id="'+(didx-1)+'" style="padding:7px 11px">‹</button>':'';
+    var nextH=didx<D.length-1?'<button class="btn" data-nav-dir="1" data-id="'+(didx+1)+'" style="padding:7px 11px">›</button>':'';
+    tr.innerHTML='<button class="btn" id="btn-back">← Volver</button>'+prevH+nextH;cnt.innerHTML=rDetail(m);window.scrollTo(0,0);}
 }
 function goPg(p){pg=p;var cnt=document.getElementById('cnt');if(vw==='top')cnt.innerHTML=rTop();else if(vw==='all')cnt.innerHTML=rAll();}
 
@@ -434,6 +437,16 @@ function init(){
   nav('dashboard');
 
   /* Event delegation - ALL clicks handled here, no inline handlers with string args */
+  // Keyboard: Enter on focusable rows
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Enter')return;
+    var t=e.target;
+    if(t.hasAttribute('data-id')&&t.getAttribute('tabindex')==='0'){
+      var id=parseInt(t.getAttribute('data-id'));
+      if(!isNaN(id)&&D[id]&&!t.hasAttribute('data-st')&&!t.hasAttribute('data-np'))nav('detail',D[id]);
+    }
+  });
+
   document.addEventListener('click',function(e){
     var t=e.target;
     // closest polyfill
@@ -459,7 +472,7 @@ function init(){
 
     // Table rows / cards (open detail)
     var row=up(t,'[data-id]');
-    if(row&&row.getAttribute('data-id')!==null&&!up(t,'[data-cmp]')&&!up(t,'[data-st]')&&!up(t,'[data-np]')&&!up(t,'[data-clr]')&&!up(t,'.cmp-item')&&!up(t,'.cmp-sel')){
+    if(row&&row.getAttribute('data-id')!==null&&!up(t,'[data-cmp]')&&!up(t,'[data-cmp-from]')&&!up(t,'[data-st]')&&!up(t,'[data-np]')&&!up(t,'[data-clr]')&&!up(t,'.cmp-item')&&!up(t,'.cmp-sel')){
       var id=parseInt(row.getAttribute('data-id'));
       if(!isNaN(id)&&D[id])nav('detail',D[id]);
       return;
@@ -481,6 +494,14 @@ function init(){
     // Back button
     if(t.id==='btn-back'||up(t,'#btn-back')){history.go(-1);return;}
 
+    // Prev/next clinic in detail view
+    var navDir=up(t,'[data-nav-dir]');
+    if(navDir){
+      var nid=parseInt(navDir.getAttribute('data-id'));
+      if(!isNaN(nid)&&D[nid])nav('detail',D[nid]);
+      return;
+    }
+
     // Compare pick from dropdown
     var ci=up(t,'.cmp-item');
     if(ci){cmpPick(ci.getAttribute('data-which'),parseInt(ci.getAttribute('data-id')));return;}
@@ -491,6 +512,15 @@ function init(){
 
     // Compare run
     if(t.id==='btn-cmp-run'){runCompare();return;}
+
+    // "Comparar desde ficha" button — pre-loads clinic A then navigates to comparator
+    var cmpFrom=up(t,'[data-cmp-from]');
+    if(cmpFrom){
+      cmpA=parseInt(cmpFrom.getAttribute('data-cmp-from'));
+      cmpB=-1;
+      nav('compare');
+      return;
+    }
 
     // Compare reset
     if(t.id==='btn-cmp-reset'){resetCompare();return;}
@@ -629,9 +659,11 @@ function rDash(){
     +'<div class="two-col">'
     +'<div><div class="sh"><span class="sh-t">Clínicas con más reseñas</span><span class="sh-m">mayor volumen = mayor ticket</span></div>'
     +'<div class="insight"><div class="insight-t">Top 5 por reseñas Google</div>'+revH+'</div></div>'
-    +'<div><div class="sh"><span class="sh-t">Leads más calientes</span><span class="sh-lnk" data-nav="top">Ver ranking →</span></div>'
-    +'<div class="table-wrap">'+top4.map(function(m){return rRow(m,m.id,true);}).join('')+'</div></div>'
-    +'</div>';
+    +'<div><div class="sh"><span class="sh-t">Distribución de oportunidad</span></div><div class="cbox">'+oppH+'</div></div>'
+    +'</div>'
+
+    +'<div class="sh"><span class="sh-t">Leads más calientes — contactar hoy</span><span class="sh-lnk" data-nav="top">Ver ranking completo →</span></div>'
+    +'<div class="cgrid">'+top4.map(rCard).join('')+'</div>';
 }
 
 /* ── ROW ──────────────────────────────────────────────────── */
@@ -647,6 +679,7 @@ function rRow(m,idx,compact){
     +'</div>';
 }
 function rPaged(list){
+  if(!list.length)return '<div class="empty-s"><div style="font-size:32px;margin-bottom:10px">&#128270;</div><div style="font-size:14px;font-weight:600;color:var(--t2);margin-bottom:4px">Sin resultados</div><div style="font-size:12px">Prueba con otros filtros o limpia la b&#250;squeda</div></div>';
   var start=(pg-1)*PAGE;var sl=list.slice(start,start+PAGE);var tot=Math.ceil(list.length/PAGE);
   var rows=sl.map(function(m,i){return rRow(m,start+i,false);}).join('');
   var pag=tot>1?'<div class="pag"><button class="pgb" '+(pg<=1?'disabled':'')+' data-np="'+(pg-1)+'">←</button><span class="pgi">'+pg+'/'+tot+' · '+list.length+'</span><button class="pgb" '+(pg>=tot?'disabled':'')+' data-np="'+(pg+1)+'">→</button></div>':'';
@@ -730,10 +763,18 @@ function rAll(){
 
 /* ── COMPARE ──────────────────────────────────────────────── */
 function rCompare(){
-  var selA=cmpA>=0?'<div class="cmp-sel"><span>'+xe(D[cmpA].n)+' — '+xe(D[cmpA].c)+'</span><button data-clr="A">✕</button></div>':'';
-  var selB=cmpB>=0?'<div class="cmp-sel"><span>'+xe(D[cmpB].n)+' — '+xe(D[cmpB].c)+'</span><button data-clr="B">✕</button></div>':'';
+  var selA=cmpA>=0?'<div class="cmp-sel"><span>'+xe(D[cmpA].n)+' — '+xe(D[cmpA].c)+' · Score: '+D[cmpA].ls+'</span><button data-clr="A">✕</button></div>':'';
+  var selB=cmpB>=0?'<div class="cmp-sel"><span>'+xe(D[cmpB].n)+' — '+xe(D[cmpB].c)+' · Score: '+D[cmpB].ls+'</span><button data-clr="B">✕</button></div>':'';
   var result=cmpA>=0&&cmpB>=0?rCmpResult(D[cmpA],D[cmpB]):'';
-  return '<div class="banner ban-bl"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/></svg><div><b>Comparador de rentabilidad.</b> Busca dos clínicas y pulsa Comparar para ver cuál contactar primero y por qué.</div></div>'
+  var preloaded=cmpA>=0&&cmpB<0;
+  var bannerCls=preloaded?'ban-g':'ban-bl';
+  var bannerTxt=preloaded
+    ?'<b>Clínica A seleccionada: '+xe(D[cmpA].n)+'.</b> Ahora busca la clínica B y pulsa Comparar.'
+    :'<b>Comparador de rentabilidad.</b> Busca dos clínicas y pulsa Comparar.';
+  return '<div class="banner '+bannerCls+'">'
+    +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round">'
+    +(preloaded?'<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>':'<polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/>')
+    +'</svg><div>'+bannerTxt+'</div></div>'
     +'<div class="cmp-grid">'
     +'<div class="dblk"><div class="dblk-t">Clínica A</div>'
     +'<input id="cmp-si-A" class="srch-in" placeholder="Escribe nombre o ciudad..." autocomplete="off" autocorrect="off" value="">'
@@ -1000,17 +1041,5 @@ init();
 
 </script>
 
-</body>
-</html>
-
-/* COMPARE SEARCH — wired up after render */
-document.addEventListener('input', function(e) {
-  if (e.target && e.target.id === 'ciA') cmpSearch('A');
-  if (e.target && e.target.id === 'ciB') cmpSearch('B');
-});
-
-init();
-
-</script>
 </body>
 </html>
